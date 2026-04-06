@@ -349,9 +349,6 @@ class PoseEngine:
         pose_frames = []
         frame_idx = 0
 
-        from .kalman_smoother import PoseLandmarkSmoother
-        smoother = PoseLandmarkSmoother()
-
         try:
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -361,11 +358,6 @@ class PoseEngine:
                 timestamp = frame_idx / fps if fps > 0 else frame_idx
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 landmarks, visibility = backend.detect(rgb_frame)
-
-                # Apply per-landmark Kalman filter + visibility EMA smoothing.
-                # This removes detection jitter and interpolates through low-
-                # confidence frames, especially for distal landmarks (toe, heel).
-                landmarks, visibility = smoother.smooth(landmarks, visibility)
 
                 pose_frames.append(PoseFrame(
                     frame_index=frame_idx,
