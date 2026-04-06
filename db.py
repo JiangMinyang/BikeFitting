@@ -118,8 +118,19 @@ def save_session(db_path: str, bike_params: Dict, results: Dict) -> int:
     fa = results.get("frontal_analysis") or {}
 
     def _rel(path: str) -> str:
-        """Store just the basename so paths survive volume remounts."""
-        return os.path.basename(path) if path else ""
+        """Store path relative to OUTPUT_DIR (e.g. 'session_dir/file.html').
+
+        Paths arriving here come from web_results and look like
+        '/output/subdir/file.html' — strip the leading '/output/' prefix so
+        the stored value is just the part relative to OUTPUT_DIR.  This lets
+        the server reconstruct '/output/<rel>' for serving and resolve
+        'OUTPUT_DIR/<rel>' for file-system operations (e.g. deletion).
+        """
+        if not path:
+            return ""
+        if path.startswith("/output/"):
+            return path[len("/output/"):]
+        return os.path.basename(path)   # legacy / fallback
 
     def _float(d, *keys):
         for k in keys:
@@ -232,8 +243,26 @@ def update_session(db_path: str, session_id: int, fields: Dict) -> bool:
 
 
 def delete_session(db_path: str, session_id: int) -> bool:
-    """Delete a session record (output files are NOT removed from disk)."""
+    """Delete a session record from the database.
+
+    File cleanup (session directory on disk) is handled by the caller
+    (server._delete_session) before this function is invoked.
+    """
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+def get_session_file_paths(db_path: str, session_id: int) -> Optional[Dict]:
+    """Return only the file-path columns for a session (lightweight, no blobs)."""
+    file_cols = (
+        "report_html", "side_annotated_video", "front_annotated_video",
+        "chart_png", "bdc_frame_png", "tdc_frame_png",
+    )
+    sql = f"SELECT {', '.join(file_cols)} FROM sessions WHERE id = ?"
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(sql, (session_id,)).fetchone()
+    if row is None:
+        return None
+    return dict(zip(file_cols, row))

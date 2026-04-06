@@ -165,11 +165,32 @@ class BikeFitHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": "Not found"}, 404)
 
     def _delete_session(self, session_id: int):
-        ok = session_db.delete_session(DB_PATH, session_id)
-        if ok:
-            self._json_response({"ok": True})
-        else:
+        import shutil
+
+        # Fetch file paths before deleting the DB row so we know what to clean up
+        paths = session_db.get_session_file_paths(DB_PATH, session_id)
+        if paths is None:
             self._json_response({"error": "Not found"}, 404)
+            return
+
+        # Delete DB row first (so the session disappears from the UI immediately
+        # even if file removal encounters a transient error)
+        session_db.delete_session(DB_PATH, session_id)
+
+        # Locate the session subdirectory from any stored file path.
+        # Stored values are relative to OUTPUT_DIR, e.g. "prefix/prefix_report.html"
+        session_dir = None
+        for rel in paths.values():
+            if rel:
+                candidate = os.path.dirname(os.path.join(OUTPUT_DIR, rel))
+                if candidate != OUTPUT_DIR:   # has a real subdirectory
+                    session_dir = candidate
+                    break
+
+        if session_dir and os.path.isdir(session_dir):
+            shutil.rmtree(session_dir, ignore_errors=True)
+
+        self._json_response({"ok": True})
 
     # ── Analysis ──────────────────────────────────────────────────────────────
 
