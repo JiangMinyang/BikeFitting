@@ -15,8 +15,6 @@ from .angle_calculator import JointAngles
 COLORS = {
     "skeleton":   (0, 200, 100),
     "joint_dot":  (255, 255, 0),
-    "foot_dot":   (0, 220, 255),   # cyan — foot/toe landmark or estimate
-    "foot_line":  (0, 180, 220),   # slightly darker cyan for the ankle→foot line
     "angle_text": (255, 255, 255),
     "hud_bg":     (20, 20, 20),
     "hud_border": (80, 200, 120),
@@ -25,13 +23,12 @@ COLORS = {
     "info":       (255, 200, 0),
 }
 
-# Fraction of shin length used to project an estimated toe point when the
-# foot_index landmark is unavailable (RTMPose 17-kpt).
-# 0.45 ≈ slightly less than half the shin length, which places the dot
-# roughly at the ball of the foot relative to the ankle.
+# Fraction of shin length used to project an estimated toe point when
+# no foot landmark is available at all.
 _FOOT_ESTIMATE_RATIO = 0.45
 
-# Skeleton connections to draw
+# Skeleton connections to draw.
+# Foot chain: ankle → heel → big_toe — shows full foot shape when landmarks available.
 POSE_CONNECTIONS = [
     ("left_shoulder",  "right_shoulder"),
     ("left_shoulder",  "left_elbow"),
@@ -43,10 +40,12 @@ POSE_CONNECTIONS = [
     ("left_hip",       "right_hip"),
     ("left_hip",       "left_knee"),
     ("left_knee",      "left_ankle"),
-    ("left_ankle",     "left_foot_index"),   # optional — drawn only if landmark visible
+    ("left_ankle",     "left_heel"),        # ankle → heel
+    ("left_heel",      "left_foot_index"),  # heel  → big toe
     ("right_hip",      "right_knee"),
     ("right_knee",     "right_ankle"),
-    ("right_ankle",    "right_foot_index"),  # optional
+    ("right_ankle",    "right_heel"),       # ankle → heel
+    ("right_heel",     "right_foot_index"), # heel  → big toe
 ]
 
 # Joint triplets to annotate angles at (vertex landmark, label, JointAngles attr)
@@ -92,15 +91,12 @@ class VideoAnnotator:
     def draw_feet(self, frame_img: np.ndarray, pose_frame: PoseFrame,
                   near_side: Optional[str] = None):
         """
-        Draw foot/toe landmarks with fallback estimation for 17-kpt models.
+        Estimation-only fallback for when no foot landmarks are detected at all.
 
-        For each leg:
-        - If foot_index is visible (MediaPipe 33-kpt): draw the actual landmark.
-        - If foot_index is absent but heel is visible: use heel instead.
-        - Otherwise: estimate the toe position by extending the shin vector
-          (knee → ankle) beyond the ankle by _FOOT_ESTIMATE_RATIO × shin length.
-          The estimated point is drawn with a dashed-style circle to signal it
-          is inferred rather than directly detected.
+        Heel and big-toe landmarks are normally drawn by draw_skeleton as regular
+        joints (same color, same size). This method only runs to provide a visual
+        estimate when the ankle is visible but both heel and toe landmarks are
+        absent — e.g. with a 17-keypoint model that has no foot keypoints.
         """
         w, h = self.width, self.height
         far_side = ("right" if near_side == "left" else "left") if near_side else None
@@ -108,53 +104,41 @@ class VideoAnnotator:
         for side in ("left", "right"):
             if side == far_side:
                 continue
-            knee_pt   = _px(pose_frame, f"{side}_knee",       w, h)
-            ankle_pt  = _px(pose_frame, f"{side}_ankle",      w, h)
-            # Require higher confidence for the toe to avoid flickering;
-            # heel is more reliably detected and used as fallback.
-            foot_pt   = _px(pose_frame, f"{side}_foot_index", w, h, min_vis=0.45)
-            if foot_pt is None:
-                foot_pt = _px(pose_frame, f"{side}_heel", w, h, min_vis=0.30)
-
-            if ankle_pt is None:
+            # If any real foot landmark is detected, skip — draw_skeleton handles it
+            if (_px(pose_frame, f"{side}_foot_index", w, h, min_vis=0.10) is not None or
+                    _px(pose_frame, f"{side}_heel",       w, h, min_vis=0.10) is not None):
                 continue
 
-            if foot_pt is not None:
-                # Real landmark available — draw it normally
-                cv2.line(frame_img, ankle_pt, foot_pt,
-                         COLORS["foot_line"], 2, cv2.LINE_AA)
-                cv2.circle(frame_img, foot_pt, 6,
-                           COLORS["foot_dot"], -1, cv2.LINE_AA)
-                cv2.circle(frame_img, foot_pt, 8,
-                           (255, 255, 255), 1, cv2.LINE_AA)
-            elif knee_pt is not None:
-                # Estimate: project shin vector past the ankle
-                shin_vec = np.array([ankle_pt[0] - knee_pt[0],
-                                     ankle_pt[1] - knee_pt[1]], dtype=float)
-                shin_len = np.linalg.norm(shin_vec)
-                if shin_len < 1e-3:
-                    continue
-                shin_unit = shin_vec / shin_len
-                offset = shin_unit * shin_len * _FOOT_ESTIMATE_RATIO
-                est_pt = (int(ankle_pt[0] + offset[0]),
-                          int(ankle_pt[1] + offset[1]))
+            knee_pt  = _px(pose_frame, f"{side}_knee",  w, h)
+            ankle_pt = _px(pose_frame, f"{side}_ankle", w, h)
+            if ankle_pt is None or knee_pt is None:
+                continue
 
-                # Dashed line: alternate filled / empty segments
-                steps = 6
-                for i in range(steps):
-                    if i % 2 == 0:   # draw every other segment
-                        t0 = i / steps
-                        t1 = (i + 1) / steps
-                        p0 = (int(ankle_pt[0] + offset[0] * t0),
-                              int(ankle_pt[1] + offset[1] * t0))
-                        p1 = (int(ankle_pt[0] + offset[0] * t1),
-                              int(ankle_pt[1] + offset[1] * t1))
-                        cv2.line(frame_img, p0, p1,
-                                 COLORS["foot_line"], 2, cv2.LINE_AA)
+            # Estimate: project shin vector past the ankle
+            shin_vec = np.array([ankle_pt[0] - knee_pt[0],
+                                 ankle_pt[1] - knee_pt[1]], dtype=float)
+            shin_len = np.linalg.norm(shin_vec)
+            if shin_len < 1e-3:
+                continue
+            shin_unit = shin_vec / shin_len
+            offset    = shin_unit * shin_len * _FOOT_ESTIMATE_RATIO
+            est_pt    = (int(ankle_pt[0] + offset[0]),
+                         int(ankle_pt[1] + offset[1]))
 
-                # Hollow circle = estimated, not detected
-                cv2.circle(frame_img, est_pt, 6,
-                           COLORS["foot_dot"], 2, cv2.LINE_AA)
+            # Dashed line to estimated point
+            steps = 6
+            for i in range(steps):
+                if i % 2 == 0:
+                    t0 = i / steps
+                    t1 = (i + 1) / steps
+                    p0 = (int(ankle_pt[0] + offset[0] * t0),
+                          int(ankle_pt[1] + offset[1] * t0))
+                    p1 = (int(ankle_pt[0] + offset[0] * t1),
+                          int(ankle_pt[1] + offset[1] * t1))
+                    cv2.line(frame_img, p0, p1, COLORS["skeleton"], 2, cv2.LINE_AA)
+
+            # Hollow circle = estimated, not detected
+            cv2.circle(frame_img, est_pt, 4, COLORS["joint_dot"], 1, cv2.LINE_AA)
 
     def draw_skeleton(self, frame_img: np.ndarray, pose_frame: PoseFrame,
                       near_side: Optional[str] = None):
@@ -168,9 +152,6 @@ class VideoAnnotator:
         far_pfx = ("right_" if near_side == "left" else "left_") if near_side else None
 
         for start_name, end_name in POSE_CONNECTIONS:
-            # Skip foot connections — handled by draw_feet with fallback logic
-            if "foot_index" in end_name:
-                continue
             # Skip connections where BOTH endpoints are on the far side
             if far_pfx and start_name.startswith(far_pfx) and end_name.startswith(far_pfx):
                 continue
@@ -180,9 +161,6 @@ class VideoAnnotator:
                 cv2.line(frame_img, p1, p2, COLORS["skeleton"], 2, cv2.LINE_AA)
 
         for name in LANDMARK_INDICES:
-            # Skip foot landmarks — drawn by draw_feet
-            if "foot_index" in name or "heel" in name:
-                continue
             # Skip far-side joint dots
             if far_pfx and name.startswith(far_pfx):
                 continue
