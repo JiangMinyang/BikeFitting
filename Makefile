@@ -19,12 +19,12 @@ RESULTS_DIR := $(HOME)/Documents/BikeFitResults
 
 .PHONY: build run stop restart logs clean test shell download-model
 
-# Download the RTMPose-l ONNX model locally (~150 MB, one-time).
+# Download the RTMPose-Wholebody ONNX model locally (~200 MB, one-time).
 # Must be run before `make build` to bake the model into the image.
 # Safe to skip — the container will auto-download on first inference instead.
 download-model:
 	@echo ""
-	@echo "  Downloading RTMPose-l ONNX model (~150 MB)..."
+	@echo "  Downloading RTMPose-Wholebody ONNX model (~200 MB)..."
 	@mkdir -p $(MODELS_DIR)
 	@mkdir -p $(MODELS_DIR)
 	python3 -c "import sys; sys.path.insert(0,'$(CURDIR)'); from core.rtmpose_backend import download_model; download_model(model_dir='$(MODELS_DIR)')"

@@ -1,37 +1,44 @@
 """
-RTMPose-l ONNX backend for pose estimation.
+RTMPose-Wholebody ONNX backend for pose estimation.
 
-RTMPose-l achieves 76.3 COCO AP vs MediaPipe's ~65-68, with significantly
-better robustness on side-view and occluded poses.
+RTMPose-Wholebody (rtmw-l) achieves strong whole-body pose estimation with
+133 keypoints covering body, face, and hands. For bike fitting we use only
+the body (0–16, COCO-17) and foot (17–22) keypoints; face and hands are ignored.
 
-Model: rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192
-  - Trained on 7 body datasets (COCO, AIC, MPII, CrowdPose, PoseTrack, ...)
+Model: rtmw-l_simcc-cocktail14_pt-cocktail14_270e-256x192
+  - Trained on 14 whole-body datasets (cocktail14)
   - SimCC head: two 1-D distributions for x and y coordinates per keypoint
-  - 26 Halpe keypoints (COCO-17 + head/neck/hip-center + 6 foot landmarks)
+  - 133 keypoints: COCO-17 body (0-16) + 6 foot (17-22) + 68 face (23-90)
+                   + 42 hand (91-132)
   - Input: (1, 3, 256, 192) — RGB, ImageNet normalisation
-  - Outputs: simcc_x (1, 26, 384), simcc_y (1, 26, 512)
+  - Outputs: simcc_x (1, 133, 384), simcc_y (1, 133, 512)
 
-Halpe-26 foot keypoints (indices 20-25):
-  20: left_big_toe   → canonical 31 (left_foot_index)
-  21: right_big_toe  → canonical 32 (right_foot_index)
-  22: left_small_toe → (no canonical slot, skipped)
-  23: right_small_toe→ (no canonical slot, skipped)
-  24: left_heel      → canonical 29 (left_heel)
-  25: right_heel     → canonical 30 (right_heel)
+Keypoint schema (subset used for bike fitting):
+  Body (COCO-17, indices 0-16):
+    0: nose            5: left_shoulder   11: left_hip
+    1: left_eye        6: right_shoulder  12: right_hip
+    2: right_eye       7: left_elbow      13: left_knee
+    3: left_ear        8: right_elbow     14: right_knee
+    4: right_ear       9: left_wrist      15: left_ankle
+                      10: right_wrist     16: right_ankle
+  Foot (indices 17-22):
+    17: left_big_toe   → canonical 31 (left_foot_index)
+    18: left_small_toe → (no canonical slot, skipped)
+    19: left_heel      → canonical 29 (left_heel)
+    20: right_big_toe  → canonical 32 (right_foot_index)
+    21: right_small_toe→ (no canonical slot, skipped)
+    22: right_heel     → canonical 30 (right_heel)
+  Face (indices 23-90): skipped — not used for bike fitting
+  Hands (indices 91-132): skipped — not used for bike fitting
 
 ONNX model download (auto-handled on first use):
   https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/
-      rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192-2abb7558_20230605.zip
-
-CoreML export (Apple Silicon / iOS deployment):
-  Use MMDeploy with the official config:
-    configs/mmpose/pose-detection_coreml-fp16_static-256x192.py
-  Reference: MMDeploy PR #1902
+      rtmw-l_simcc-cocktail14_pt-cocktail14_270e-256x192-13a2546d_20231208.zip
 
 References:
   - RTMPose paper: https://arxiv.org/abs/2303.07399
-  - MMPose model zoo: https://mmpose.readthedocs.io/en/latest/model_zoo/body_2d_keypoint.html
-  - Halpe-26 keypoint schema: https://github.com/Fang-Haoshu/Halpe-FullBody
+  - MMPose wholebody model zoo: https://mmpose.readthedocs.io/en/latest/model_zoo/wholebody_2d_keypoint.html
+  - Cocktail14 dataset: https://github.com/open-mmlab/mmpose/tree/main/configs/wholebody_2d_keypoint
 """
 
 import os
@@ -42,8 +49,8 @@ from typing import Optional, Tuple
 
 # ── Model metadata ────────────────────────────────────────────────────────────
 
-MODEL_FILENAME = "rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192-2abb7558_20230605.onnx"
-MODEL_ZIP      = "rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192-2abb7558_20230605.zip"
+MODEL_FILENAME = "rtmw-l_simcc-cocktail14_pt-cocktail14_270e-256x192-13a2546d_20231208.onnx"
+MODEL_ZIP      = "rtmw-l_simcc-cocktail14_pt-cocktail14_270e-256x192-13a2546d_20231208.zip"
 MODEL_URL      = (
     "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/"
     + MODEL_ZIP
@@ -63,34 +70,35 @@ _MEAN = np.array([123.675, 116.28, 103.53], dtype=np.float32)
 _STD  = np.array([ 58.395,  57.12,  57.375], dtype=np.float32)
 
 # ── Keypoint mapping ──────────────────────────────────────────────────────────
-# RTMPose Halpe-26 outputs 26 keypoints.
-# We map them into our canonical 33-landmark array (MediaPipe-compatible indices).
-# Landmarks that RTMPose does not produce are left at zero visibility.
+# RTMPose-Wholebody outputs 133 keypoints.
+# We map the body (0-16) and foot (17-22) keypoints into our canonical
+# 33-landmark array (MediaPipe-compatible indices).
+# Face (23-90) and hand (91-132) landmarks are not used for bike fitting
+# and are left at zero visibility in the canonical array.
 #
-# Halpe-26 schema:
-#   0  nose           17 head_top
-#   1  left_eye       18 neck
-#   2  right_eye      19 hip (center)
-#   3  left_ear       20 left_big_toe
-#   4  right_ear      21 right_big_toe
-#   5  left_shoulder  22 left_small_toe
-#   6  right_shoulder 23 right_small_toe
-#   7  left_elbow     24 left_heel
-#   8  right_elbow    25 right_heel
-#   9  left_wrist
-#   10 right_wrist
-#   11 left_hip
-#   12 right_hip
-#   13 left_knee
-#   14 right_knee
-#   15 left_ankle
-#   16 right_ankle
+# RTMW-133 body keypoints (COCO-17, indices 0-16) — identical layout to COCO:
+#   0  nose            9  left_wrist
+#   1  left_eye       10  right_wrist
+#   2  right_eye      11  left_hip
+#   3  left_ear       12  right_hip
+#   4  right_ear      13  left_knee
+#   5  left_shoulder  14  right_knee
+#   6  right_shoulder 15  left_ankle
+#   7  left_elbow     16  right_ankle
+#   8  right_elbow
+#
+# RTMW-133 foot keypoints (indices 17-22):
+#   17  left_big_toe    19  left_heel
+#   18  left_small_toe  20  right_big_toe
+#                       21  right_small_toe
+#                       22  right_heel
 
 NUM_CANONICAL = 33  # keep parity with MediaPipe for downstream compatibility
 
 # rtmpose_idx → canonical_idx
+# Only body (0-16) and foot (17-22) keypoints are mapped; face/hands are skipped.
 _RTMPOSE_TO_CANONICAL = {
-    # ── COCO-17 body keypoints ────────────────────────────────────────────────
+    # ── COCO-17 body keypoints (same order as MediaPipe canonical) ────────────
     0:  0,   # nose
     1:  1,   # left_eye  (not in LANDMARK_INDICES but harmless to fill)
     2:  2,   # right_eye
@@ -108,14 +116,14 @@ _RTMPOSE_TO_CANONICAL = {
     14: 26,  # right_knee
     15: 27,  # left_ankle
     16: 28,  # right_ankle
-    # ── Halpe-26 extra keypoints (foot landmarks) ─────────────────────────────
-    # Indices 17-19 (head_top, neck, hip_center) have no canonical slot → skipped
-    20: 31,  # left_big_toe   → left_foot_index  (canonical 31)
-    21: 32,  # right_big_toe  → right_foot_index (canonical 32)
-    # 22: left_small_toe  → no canonical slot, skipped
-    # 23: right_small_toe → no canonical slot, skipped
-    24: 29,  # left_heel      → left_heel         (canonical 29)
-    25: 30,  # right_heel     → right_heel        (canonical 30)
+    # ── Foot keypoints (indices 17-22) ───────────────────────────────────────
+    17: 31,  # left_big_toe    → left_foot_index  (canonical 31)
+    # 18: left_small_toe → no canonical slot, skipped
+    19: 29,  # left_heel       → left_heel         (canonical 29)
+    20: 32,  # right_big_toe   → right_foot_index (canonical 32)
+    # 21: right_small_toe → no canonical slot, skipped
+    22: 30,  # right_heel      → right_heel        (canonical 30)
+    # Indices 23-132 (face + hands) → not mapped, left at zero visibility
 }
 
 
@@ -163,8 +171,8 @@ def _decode_simcc(simcc_x: np.ndarray, simcc_y: np.ndarray,
     """
     Decode SimCC distributions → normalised (x, y) coordinates + visibility scores.
 
-    simcc_x : (1, K, W*split) — x logit distributions  [K=26 for Halpe-26]
-    simcc_y : (1, K, H*split) — y logit distributions  [K=26 for Halpe-26]
+    simcc_x : (1, K, W*split) — x logit distributions  [K=133 for RTMW-Wholebody]
+    simcc_y : (1, K, H*split) — y logit distributions  [K=133 for RTMW-Wholebody]
 
     Decoding follows the MMPose canonical SimCC decode:
       - location  : argmax over bins  / split_ratio  → pixel in INPUT space
@@ -242,7 +250,7 @@ def download_model(model_dir: Optional[str] = None, verbose: bool = True) -> str
     zip_path = os.path.join(dest_dir, MODEL_ZIP)
 
     if verbose:
-        print(f"[RTMPose] Downloading model from OpenMMLab (~150 MB)...")
+        print(f"[RTMPose] Downloading RTMPose-Wholebody model from OpenMMLab (~200 MB)...")
         print(f"          {MODEL_URL}")
 
     _last_reported = [-1]
@@ -298,26 +306,20 @@ def download_model(model_dir: Optional[str] = None, verbose: bool = True) -> str
 
 class RTMPoseBackend:
     """
-    RTMPose-l ONNX Runtime backend (Halpe-26 keypoints).
+    RTMPose-Wholebody ONNX Runtime backend (133 keypoints).
 
     Provides the same detect(rgb_frame) → (landmarks, visibility) interface
-    as MediaPipeBackend and OpenCVDNNBackend, so it can be used as a drop-in
-    replacement in PoseEngine.
+    as MediaPipeBackend, so it can be used as a drop-in replacement in PoseEngine.
+
+    Outputs 133 keypoints (COCO-17 body + 6 foot + 68 face + 42 hand).
+    For bike fitting, only body (0-16) and foot (17-22) keypoints are mapped
+    into the canonical 33-slot array; face and hand keypoints are discarded.
 
     Key improvements over MediaPipe Pose:
-    - +8–11 COCO AP points (76.3 vs ~65-68)
-    - 26 Halpe keypoints: full body + heel and toe landmarks for ankle analysis
-    - Trained on 7 diverse body datasets — better generalisation
-    - Top-down architecture with letterbox crop — more stable under equipment
-      occlusion (bike frame, handlebars)
+    - Higher accuracy on body keypoints with whole-body training data
+    - 6 dedicated foot keypoints (big toe, small toe, heel both sides)
+    - Top-down architecture with letterbox crop — stable under equipment occlusion
     - Deterministic, fully offline — no network calls after model download
-
-    CoreML note:
-    For Apple Silicon / iOS deployment, export via MMDeploy:
-      python tools/deploy.py \\
-        configs/mmpose/pose-detection_coreml-fp16_static-256x192.py \\
-        [model_cfg] [checkpoint] [demo_video]
-    Reference: MMDeploy PR #1902
     """
 
     def __init__(self, model_path: Optional[str] = None,
