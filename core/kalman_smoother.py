@@ -48,12 +48,13 @@ class _LandmarkKF:
     )
 
     def __init__(self, pos_process_std: float, vel_process_std: float,
-                 measure_std_at_full_conf: float):
+                 measure_std_at_full_conf: float, skip_threshold: float = 0.10):
         self._Q = np.diag([
             pos_process_std ** 2, pos_process_std ** 2,
             vel_process_std ** 2, vel_process_std ** 2,
         ])
         self._R_base = measure_std_at_full_conf ** 2  # scalar, scaled by 1/conf²
+        self._skip_threshold = skip_threshold          # min conf to include measurement
         self._x: Optional[np.ndarray] = None  # not initialised until first detection
         self._P: Optional[np.ndarray] = None
 
@@ -78,7 +79,7 @@ class _LandmarkKF:
         """
         # ── Initialise on first reliable detection ────────────────────────────
         if not self.initialised:
-            if z is not None and confidence >= 0.10:
+            if z is not None and confidence >= self._skip_threshold:
                 self._init(float(z[0]), float(z[1]))
             # Return raw measurement (or zeros) until filter is running
             return z.copy() if z is not None else np.zeros(2, dtype=np.float64)
@@ -87,7 +88,7 @@ class _LandmarkKF:
         self._x = self._F @ self._x
         self._P = self._F @ self._P @ self._F.T + self._Q
 
-        if z is None or confidence < 0.10:
+        if z is None or confidence < self._skip_threshold:
             # No reliable measurement — return prediction
             return self._x[:2].copy()
 
@@ -109,11 +110,30 @@ class _LandmarkKF:
 
 # ── Multi-landmark smoother ───────────────────────────────────────────────────
 
+# Canonical indices for foot landmarks (heel + toe).
+# These are distal, fast-moving landmarks that frequently have low confidence
+# in side-view cycling video, so they need a looser skip threshold and higher
+# process noise so the filter stays responsive rather than drifting on predictions.
+_FOOT_LANDMARK_INDICES = {29, 30, 31, 32}  # left/right heel, left/right foot_index
+
+# Foot-specific Kalman parameters
+_FOOT_PROCESS_STD     = 0.008   # 2.7× higher than body — allows faster position changes
+_FOOT_VEL_PROCESS_STD = 0.020   # 2× higher — direction can reverse each pedal stroke
+_FOOT_SKIP_THRESHOLD  = 0.04    # include measurements down to 4% confidence (vs 10%)
+
+
 class PoseLandmarkSmoother:
     """
     Wraps one _LandmarkKF per canonical landmark slot and applies an EMA to
     visibility scores, then exposes a single ``smooth()`` call for use inside
     the pose-engine frame loop.
+
+    Foot landmarks (heel + toe, canonical 29-32) use relaxed parameters:
+    - Lower skip threshold (0.04 vs 0.10) — incorporate low-confidence toe
+      measurements instead of predicting forward, which causes visible lag.
+    - Higher process noise — the toe reverses direction every pedal stroke so
+      the filter must stay responsive; a stiff filter with prediction-only
+      frames will consistently lag behind the actual position.
 
     Parameters
     ----------
@@ -144,10 +164,18 @@ class PoseLandmarkSmoother:
         measure_std: float = 0.008,
         vis_alpha: float = 0.35,
     ):
-        self._filters = [
-            _LandmarkKF(process_std, vel_process_std, measure_std)
-            for _ in range(n_landmarks)
-        ]
+        self._filters = []
+        for i in range(n_landmarks):
+            if i in _FOOT_LANDMARK_INDICES:
+                self._filters.append(_LandmarkKF(
+                    _FOOT_PROCESS_STD, _FOOT_VEL_PROCESS_STD,
+                    measure_std, skip_threshold=_FOOT_SKIP_THRESHOLD,
+                ))
+            else:
+                self._filters.append(_LandmarkKF(
+                    process_std, vel_process_std,
+                    measure_std, skip_threshold=0.10,
+                ))
         self._vis_ema = np.zeros(n_landmarks, dtype=np.float32)
         self._vis_alpha = vis_alpha
 
