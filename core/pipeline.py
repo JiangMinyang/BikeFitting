@@ -96,7 +96,7 @@ class AnalysisPipeline:
             if progress_callback:
                 progress_callback(current, total, stage)
 
-        # Determine naming
+        # Determine naming — each session gets its own subdirectory
         base_name = "analysis"
         if side_video:
             base_name = os.path.splitext(os.path.basename(side_video))[0]
@@ -105,6 +105,10 @@ class AnalysisPipeline:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         prefix = f"{base_name}_{timestamp}"
+
+        # Create a per-session subdirectory so all output files are grouped together
+        session_dir = os.path.join(self.output_dir, prefix)
+        os.makedirs(session_dir, exist_ok=True)
 
         results = {
             "has_side_view": side_video is not None,
@@ -162,7 +166,7 @@ class AnalysisPipeline:
 
             # Stage 4: Angle chart
             _progress(45, 100, "Side view: generating charts...")
-            chart_path = os.path.join(self.output_dir, f"{prefix}_angles.png")
+            chart_path = os.path.join(session_dir, f"{prefix}_angles.png")
             generate_angle_chart(angle_summary, chart_path)
             results["chart_png"] = chart_path
 
@@ -190,7 +194,7 @@ class AnalysisPipeline:
                         pf_kf  = side_frames[frame_i]
                         ang_kf = angle_list[frame_i]
                         out_png = os.path.join(
-                            self.output_dir, f"{prefix}_{out_key.replace('_png', '')}.png"
+                            session_dir, f"{prefix}_{out_key.replace('_png', '')}.png"
                         )
                         pf_kf.raw_frame = raw_kf
                         annotate_single_frame(raw_kf, pf_kf, ang_kf,
@@ -202,7 +206,7 @@ class AnalysisPipeline:
             # Stage 5: Annotated side video
             # Re-read the video frame by frame to avoid buffering all raw frames in RAM.
             _progress(50, 100, "Side view: rendering annotated video...")
-            side_annotated = os.path.join(self.output_dir, f"{prefix}_side_annotated.mp4")
+            side_annotated = os.path.join(session_dir, f"{prefix}_side_annotated.mp4")
             width, height = side_meta["width"], side_meta["height"]
             cap_side = cv2.VideoCapture(side_video)
             with VideoAnnotator(fps, width, height, side_annotated) as annotator:
@@ -250,7 +254,7 @@ class AnalysisPipeline:
             # Stage 3: Annotated front video
             # Re-read the video frame by frame to avoid buffering all raw frames in RAM.
             _progress(step_offset + 20, 100, "Front view: rendering annotated video...")
-            front_annotated = os.path.join(self.output_dir, f"{prefix}_front_annotated.mp4")
+            front_annotated = os.path.join(session_dir, f"{prefix}_front_annotated.mp4")
             f_width, f_height = front_meta["width"], front_meta["height"]
             f_fps = front_meta["fps"]
             from .frontal_video_annotator import FrontalVideoAnnotator
@@ -277,7 +281,7 @@ class AnalysisPipeline:
         # REPORT: Combined HTML report
         # ════════════════════════════════════════════════════════════════════
         _progress(90, 100, "Generating combined report...")
-        report_path = os.path.join(self.output_dir, f"{prefix}_report.html")
+        report_path = os.path.join(session_dir, f"{prefix}_report.html")
 
         from reports.report_generator import generate_report
         generate_report(

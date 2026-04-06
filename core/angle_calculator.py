@@ -177,6 +177,72 @@ def _get_lm(frame: PoseFrame, name: str,
     return frame.landmarks[idx, :2].copy()
 
 
+def _hampel_filter(vals: np.ndarray, window: int = 9, k: float = 3.0) -> np.ndarray:
+    """Hampel identifier: replace outliers in-place with the local window median.
+
+    An observation is an outlier when:
+        |x_i - median(window)| > k * 1.4826 * MAD(window)
+
+    The 1.4826 factor makes MAD a consistent estimator of σ for Gaussian data,
+    so k=3 corresponds roughly to 3-sigma.  None/NaN values are skipped and
+    left unchanged so partially-missing angles are not disturbed.
+    """
+    result = vals.copy()
+    n = len(vals)
+    half = window // 2
+    for i in range(n):
+        if np.isnan(result[i]):
+            continue
+        lo = max(0, i - half)
+        hi = min(n, i + half + 1)
+        win = result[lo:hi]
+        valid = win[~np.isnan(win)]
+        if len(valid) < 3:
+            continue
+        med = float(np.median(valid))
+        mad = float(np.median(np.abs(valid - med)))
+        sigma = 1.4826 * mad
+        if sigma > 0 and abs(result[i] - med) > k * sigma:
+            result[i] = med
+    return result
+
+
+# Per-field Hampel filter parameters (window frames, k threshold).
+# Ankle is tightest because bad toe-landmark detections cause large spikes.
+_OUTLIER_PARAMS: Dict[str, tuple] = {
+    "left_ankle":        (9, 2.0),
+    "right_ankle":       (9, 2.0),
+    "left_knee":         (9, 3.0),
+    "right_knee":        (9, 3.0),
+    "left_hip":          (9, 3.0),
+    "right_hip":         (9, 3.0),
+    "left_elbow":        (9, 3.0),
+    "right_elbow":       (9, 3.0),
+    "left_shoulder_arm": (9, 3.0),
+    "right_shoulder_arm":(9, 3.0),
+    "trunk_angle":       (9, 3.0),
+}
+
+
+def _filter_angle_outliers(angle_list: List["JointAngles"]) -> List["JointAngles"]:
+    """Apply per-field Hampel filter to a list of JointAngles in-place."""
+    if not angle_list:
+        return angle_list
+    for field, (window, k) in _OUTLIER_PARAMS.items():
+        raw = np.array(
+            [getattr(a, field) if getattr(a, field) is not None else np.nan
+             for a in angle_list],
+            dtype=float,
+        )
+        if np.all(np.isnan(raw)):
+            continue
+        filtered = _hampel_filter(raw, window=window, k=k)
+        for i, a in enumerate(angle_list):
+            if not np.isnan(filtered[i]):
+                setattr(a, field, float(filtered[i]))
+    return angle_list
+
+
 class AngleCalculator:
     """Calculates joint angles from pose frames using biomechanics conventions."""
 
@@ -260,15 +326,21 @@ class AngleCalculator:
             angles.right_elbow = _three_point_angle(r_shoulder, r_elbow, r_wrist)
 
         # --- Upper arm angles (hip → shoulder → elbow, 3-point at shoulder) ---
-        # Torso-relative: measures how far the upper arm extends forward of the
-        # body line. 90 deg = arm perpendicular to torso; >90 = reaching forward.
-        # Because the torso direction (shoulder→hip) forms one leg, the angle is
-        # the same whether the rider is aero or upright — it only reflects arm
-        # position relative to the torso, not relative to the ground.
+        # Torso-relative: angle between the upper-trunk extension (hip→shoulder
+        # direction continued upward) and the upper arm (shoulder→elbow).
+        # Computed as the SUPPLEMENT of the raw 3-point angle so that the result
+        # matches what you see visually in the frame:
+        #   < 90° = arm reaches forward of perpendicular (typical road/aero)
+        #     0° = arm parallel to torso, pointing fully forward/upward
+        #    90° = arm perpendicular to torso
+        #  > 90° = arm behind perpendicular (very upright / bars too close)
+        # Being torso-relative it is the same value whether the rider is aero
+        # or upright, so aero + arms-forward and upright + arms-forward give the
+        # same angle if the reach geometry is identical.
         if all(v is not None for v in [l_hip, l_shoulder, l_elbow]):
-            angles.left_shoulder_arm = _three_point_angle(l_hip, l_shoulder, l_elbow)
+            angles.left_shoulder_arm = 180.0 - _three_point_angle(l_hip, l_shoulder, l_elbow)
         if all(v is not None for v in [r_hip, r_shoulder, r_elbow]):
-            angles.right_shoulder_arm = _three_point_angle(r_hip, r_shoulder, r_elbow)
+            angles.right_shoulder_arm = 180.0 - _three_point_angle(r_hip, r_shoulder, r_elbow)
 
         # --- Trunk angle (shoulder-hip line vs vertical) ---
         # Use midpoints of both sides when available (more accurate); fall back
@@ -290,13 +362,14 @@ class AngleCalculator:
         return angles
 
     def calculate_all(self, pose_frames: List[PoseFrame], near_side: Optional[str] = None) -> List[JointAngles]:
-        """Calculate joint angles for all frames.
+        """Calculate joint angles for all frames, then remove per-field outliers.
 
         Args:
             pose_frames: List of pose frames from the video.
             near_side: If 'left' or 'right', skip the far-side landmarks (side-view mode).
         """
-        return [self.calculate_frame(f, near_side=near_side) for f in pose_frames]
+        angle_list = [self.calculate_frame(f, near_side=near_side) for f in pose_frames]
+        return _filter_angle_outliers(angle_list)
 
     def summarize(self, angle_list: List[JointAngles]) -> Dict:
         """

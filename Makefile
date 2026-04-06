@@ -15,6 +15,7 @@ IMAGE_NAME  := bike-fit-app
 CONTAINER   := bike-fit-app
 PORT        := 8080
 MODELS_DIR  := $(HOME)/.bike-fit-models
+RESULTS_DIR := $(HOME)/Documents/BikeFitResults
 
 .PHONY: build run stop restart logs clean test shell download-model
 
@@ -45,7 +46,7 @@ run:
 	docker run --rm -d \
 		--name $(CONTAINER) \
 		-p $(PORT):8080 \
-		-v $(HOME)/BikeFitResults:/app/output \
+		-v $(RESULTS_DIR):/app/output \
 		-v "$(MODELS_DIR):/app/models" \
 		$(IMAGE_NAME)
 	@echo "  Container '$(CONTAINER)' is running."
@@ -60,7 +61,7 @@ dev: stop
 	docker run --rm -d \
 		--name $(CONTAINER) \
 		-p $(PORT):8080 \
-		-v $(HOME)/BikeFitResults:/app/output \
+		-v $(RESULTS_DIR):/app/output \
 		-v "$(MODELS_DIR):/app/models" \
 		-v "$(CURDIR)/core:/app/core" \
 		-v "$(CURDIR)/reports:/app/reports" \

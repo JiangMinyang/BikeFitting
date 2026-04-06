@@ -290,11 +290,15 @@ class BikeFitHandler(SimpleHTTPRequestHandler):
                 progress_callback=on_progress,
             )
 
+            def _rel(path):
+                """Return the path relative to OUTPUT_DIR for use in /output/ URLs."""
+                return "/output/" + os.path.relpath(path, OUTPUT_DIR)
+
             web_results = {
                 "has_side_view":  results.get("has_side_view", False),
                 "has_front_view": results.get("has_front_view", False),
                 "video_metadata": results.get("video_metadata", {}),
-                "report_html":    "/output/" + os.path.basename(results["report_html"]),
+                "report_html":    _rel(results["report_html"]),
             }
             for key, src_key in [
                 ("side_annotated_video",  "side_annotated_video"),
@@ -305,7 +309,7 @@ class BikeFitHandler(SimpleHTTPRequestHandler):
                 ("annotated_video",       "annotated_video"),
             ]:
                 if results.get(src_key):
-                    web_results[key] = "/output/" + os.path.basename(results[src_key])
+                    web_results[key] = _rel(results[src_key])
             for key in ("motion_metrics", "angle_summary", "frontal_analysis"):
                 if results.get(key):
                     web_results[key] = results[key]

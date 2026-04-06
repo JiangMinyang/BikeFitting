@@ -778,27 +778,33 @@ class MotionAnalyzer:
                         "reference": "Elbow angle guidelines",
                     })
 
-            # ── Upper arm (torso-relative: hip → shoulder → elbow) ──
+            # ── Upper arm (torso-relative: supplement of hip→shoulder→elbow) ──
+            # Angle between upper-trunk extension (toward head) and upper arm.
+            # 90° = arm perpendicular to trunk.
+            # <90° = arm on the upper/high side of perpendicular → bars high/close.
+            # >90° = arm below perpendicular → bars lower/further forward.
+            # <ideal_low (<75°) = bars too high or too close.
+            # >ideal_high (>105°) = bars too low or too far forward.
             arm = angle_summary.get(f"{side}_shoulder_arm")
             if arm:
                 mean_arm = arm["mean"]
                 if mean_arm < IR["shoulder_arm_ideal_low"]:
                     recs.append({
                         "type": "info", "joint": f"{side_cap} Upper Arm",
-                        "metric": "Upper arm close to body",
-                        "value": f"{mean_arm:.1f}° from torso (ideal: {IR['shoulder_arm_ideal_low']}-{IR['shoulder_arm_ideal_high']}°)",
-                        "suggestion": "The upper arm stays close to the body relative to the torso. "
-                                      "Bars may be too high or too close. "
-                                      "Consider a longer stem or lowering the bar height.",
+                        "metric": "Upper arm above perpendicular — bars may be too high/close",
+                        "value": f"{mean_arm:.1f}° (ideal: {IR['shoulder_arm_ideal_low']}-{IR['shoulder_arm_ideal_high']}°)",
+                        "suggestion": "The upper arm is angled above the torso perpendicular. "
+                                      "Bars may be too high or too close to the body. "
+                                      "Consider a longer stem or lowering the handlebars.",
                         "reference": "Upper arm torso-relative angle; reach analysis",
                     })
                 elif mean_arm > IR["shoulder_arm_ideal_high"]:
                     recs.append({
                         "type": "warning", "joint": f"{side_cap} Upper Arm",
-                        "metric": "Upper arm reaching too far forward",
-                        "value": f"{mean_arm:.1f}° from torso (ideal: {IR['shoulder_arm_ideal_low']}-{IR['shoulder_arm_ideal_high']}°)",
-                        "suggestion": "The upper arm extends well forward of the torso. "
-                                      "This indicates excessive reach — bars may be too far or too low. "
+                        "metric": "Upper arm below perpendicular — bars may be too far/low",
+                        "value": f"{mean_arm:.1f}° (ideal: {IR['shoulder_arm_ideal_low']}-{IR['shoulder_arm_ideal_high']}°)",
+                        "suggestion": "The upper arm drops well below the torso perpendicular. "
+                                      "This indicates excessive reach — bars may be too far away or too low. "
                                       "Consider shortening the stem or raising the handlebars.",
                         "reference": "Upper arm torso-relative angle; reach analysis",
                     })

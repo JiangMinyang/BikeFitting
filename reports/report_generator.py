@@ -123,7 +123,7 @@ def generate_report(
     <tr><td>Elbow angle</td><td>150&ndash;165&deg;</td>
         <td>Shoulder&ndash;elbow&ndash;wrist. Soft bend absorbs road vibration. Below 130&deg; = reach too long or bars too low. Above 175&deg; = nearly straight, reach too short.</td></tr>
     <tr><td>Upper arm angle (torso-relative)</td><td>75&ndash;105&deg;</td>
-        <td>Hip&ndash;shoulder&ndash;elbow angle. 90&deg; = arm perpendicular to torso. Torso-independent, so valid across aero and upright positions. Below 75&deg; = bars too close/high; above 105&deg; = excessive reach.</td></tr>
+        <td>Supplement of the hip&ndash;shoulder&ndash;elbow angle, measured from the upper-trunk extension (toward head) to the upper arm. 90&deg; = arm perpendicular to torso; &lt;90&deg; = arm forward of perpendicular (typical road reach). Torso-independent, so valid across aero and upright positions. Below 75&deg; = excessive reach (bars too far/low); above 105&deg; = arm behind perpendicular (bars too close/high).</td></tr>
     <tr><td>Trunk lean (road/endurance)</td><td>30&ndash;45&deg;</td>
         <td>From vertical. Aero/TT: 15&ndash;30&deg;; recreational: 40&ndash;55&deg;. Consistent lean indicates good core stability.</td></tr>
     <tr><th colspan="3" style="background:#e8f4fd;color:#1a5276;padding:8px 12px;">Pedaling Quality</th></tr>
