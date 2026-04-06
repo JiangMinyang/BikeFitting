@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Models (large binary files — download separately)
+models/*.onnx
+models/*.pt
+models/*.pth
+
+# Output / results
+output/
+*.mp4
+*.avi
+*.mov
+*.png
+*.jpg
+*.jpeg
+!web/**/*.png
+!web/**/*.jpg
+
+# Database
+*.db
+*.sqlite3
+
+# IDE / Claude
+.claude/
+.idea/
+.vscode/
+
+# Env
+.env
+*.env

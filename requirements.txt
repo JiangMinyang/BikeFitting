@@ -1,0 +1,14 @@
+# Core dependencies (required)
+opencv-python>=4.8.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+Pillow>=10.0.0
+
+# Pose estimation (install for best accuracy; app works without it)
+mediapipe>=0.10.0
+
+# Desktop GUI (optional — web UI works without these)
+customtkinter>=5.2.0
+
+# Optional (used if installed, pure-numpy fallback otherwise)
+# scipy>=1.10.0

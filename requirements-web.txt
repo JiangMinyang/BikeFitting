@@ -1,0 +1,13 @@
+# Web-mode dependencies (no desktop GUI packages)
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+Pillow>=10.0.0
+
+# Pose estimation — RTMPose-l (primary, 76.3 COCO AP)
+# ONNX Runtime: picks up CoreMLExecutionProvider on macOS, CUDAExecutionProvider
+# on Linux/GPU, and falls back to CPU automatically.
+onnxruntime>=1.17.0
+
+# Pose estimation — MediaPipe (fallback if RTMPose model unavailable)
+mediapipe>=0.10.0

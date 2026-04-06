@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Bike Fit Analyzer</title>
+<style>
+  /* ── Reset & base ─────────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f0f1a; --card: #1a1a2e; --card-hover: #16213e;
+    --accent: #2ecc71; --accent2: #3498db; --warn: #e67e22; --danger: #e74c3c;
+    --text: #ecf0f1; --muted: #7f8c8d; --border: #2c3e50;
+    --radius: 12px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+
+  /* ── Header ───────────────────────────────────────────────────────────── */
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 20px 32px; display: flex; align-items: center; gap: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+  .header h1 span { color: var(--accent); }
+  .header .tag {
+    font-size: 11px; background: rgba(46,204,113,0.15); color: var(--accent);
+    padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(46,204,113,0.3);
+  }
+
+  /* ── Main layout ──────────────────────────────────────────────────────── */
+  .container { max-width: 1140px; margin: 0 auto; padding: 24px 20px; flex: 1; width: 100%; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 820px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── Cards ─────────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 20px; position: relative;
+  }
+  .card-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--muted); margin-bottom: 14px; font-weight: 600;
+  }
+
+  /* ── Upload zone ──────────────────────────────────────────────────────── */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 28px 16px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: rgba(46,204,113,0.03);
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent); background: rgba(46,204,113,0.08);
+  }
+  .upload-zone .icon { font-size: 32px; margin-bottom: 8px; }
+  .upload-zone .label { color: var(--muted); font-size: 13px; }
+  .upload-zone .label strong { color: var(--accent); }
+  .upload-zone .sublabel { color: var(--muted); font-size: 11px; margin-top: 4px; opacity: 0.7; }
+  .upload-zone input { display: none; }
+  .upload-zone.has-file { border-color: var(--accent); border-style: solid; background: rgba(46,204,113,0.06); }
+  .upload-zone.has-file .label { color: var(--accent); }
+
+  /* ── Video preview ────────────────────────────────────────────────────── */
+  .video-preview { width: 100%; border-radius: 8px; margin-top: 10px; display: none; background: #000; max-height: 160px; }
+  .file-info { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 15px; font-weight: 600; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #1a1a2e; }
+  .btn-primary:hover { background: #27ae60; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-outline {
+    background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  }
+  .btn-outline:hover { background: rgba(46,204,113,0.1); }
+  .btn-outline:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-sm { padding: 8px 16px; font-size: 13px; }
+
+  /* ── Progress ─────────────────────────────────────────────────────────── */
+  .progress-wrap { margin-top: 16px; display: none; }
+  .progress-bar-bg {
+    height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 4px; width: 0%; transition: width 0.3s;
+  }
+  .progress-text { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ── Metrics grid ─────────────────────────────────────────────────────── */
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .metric-card {
+    background: rgba(255,255,255,0.03); border-radius: 10px;
+    padding: 16px; text-align: center; border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+  }
+  .metric-card .value {
+    font-size: 28px; font-weight: 700; color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .metric-card .unit { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .metric-card .label {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-top: 4px;
+  }
+
+  /* ── Recommendations ──────────────────────────────────────────────────── */
+  .rec-list { display: flex; flex-direction: column; gap: 8px; }
+  .rec-item {
+    background: rgba(255,255,255,0.03); border-radius: 8px;
+    padding: 12px 14px; border: 1px solid var(--border);
+  }
+  .rec-item .rec-head {
+    font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;
+  }
+  .rec-item .rec-body { font-size: 12px; color: var(--muted); margin-top: 4px; padding-left: 22px; }
+  .rec-item.warning { border-left: 3px solid var(--warn); }
+  .rec-item.info { border-left: 3px solid var(--accent2); }
+  .rec-item.success { border-left: 3px solid var(--accent); }
+
+  /* ── Chart ────────────────────────────────────────────────────────────── */
+  .chart-img { width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+
+  /* ── BDC / TDC keyframes ──────────────────────────────────────────────── */
+  .keyframe-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .keyframe-row { grid-template-columns: 1fr; } }
+  .keyframe-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .keyframe-img { width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
+  .keyframe-label {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; text-align: center; padding: 4px 0;
+  }
+  .keyframe-label.bdc { color: #2ecc71; }
+  .keyframe-label.tdc { color: #3498db; }
+
+  /* ── Annotated videos ─────────────────────────────────────────────────── */
+  .video-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .video-row.single { grid-template-columns: 1fr; max-width: 640px; }
+  @media (max-width: 720px) { .video-row { grid-template-columns: 1fr; } }
+  .annotated-video {
+    width: 100%; border-radius: 8px; background: #000;
+    border: 1px solid var(--border); display: block;
+  }
+  .video-label {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.6px; margin-bottom: 6px; font-weight: 600;
+  }
+  .dl-link {
+    display: inline-block; margin-top: 6px; font-size: 11px;
+    color: var(--accent2); text-decoration: none;
+  }
+  .dl-link:hover { text-decoration: underline; }
+
+  /* ── Report iframe ─────────────────────────────────────────────────────── */
+  .report-frame {
+    width: 100%; min-height: 500px; height: 70vh; border: none; border-radius: 8px;
+    background: #fff;
+  }
+  .report-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .report-actions a { font-size: 11px; color: var(--accent2); text-decoration: none; white-space: nowrap; }
+  .report-actions a:hover { text-decoration: underline; }
+
+  /* ── Results actions ──────────────────────────────────────────────────── */
+  .results-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  /* ── Bike params form ─────────────────────────────────────────────────── */
+  .params-summary { cursor: pointer; font-size: 12px; color: var(--muted);
+    user-select: none; padding: 6px 0; list-style: none; }
+  .params-summary:hover { color: var(--text); }
+  .params-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .param-field label { display: block; font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .param-field input, .param-field textarea {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px;
+    outline: none; transition: border-color 0.15s;
+  }
+  .param-field input:focus, .param-field textarea:focus { border-color: var(--accent); }
+  .param-field textarea { resize: vertical; min-height: 60px; }
+  .param-field.full { grid-column: 1 / -1; }
+  .param-unit { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .param-input-row { display: flex; gap: 6px; align-items: center; }
+  .param-input-row input { flex: 1; }
+  .unknown-btn {
+    flex-shrink: 0; width: 28px; height: 32px; border: 1px solid var(--border);
+    border-radius: 6px; background: rgba(255,255,255,0.04); color: var(--muted);
+    font-size: 13px; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; transition: all 0.15s; line-height: 1;
+  }
+  .unknown-btn.active { background: rgba(231,76,60,0.15); border-color: var(--danger); color: var(--danger); }
+  .param-field input:disabled { opacity: 0.35; cursor: not-allowed; }
+  .param-field input.unknown { font-style: italic; color: var(--muted); }
+
+  /* ── History sidebar ──────────────────────────────────────────────────── */
+  .history-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 99; display: none; }
+  .history-overlay.open { display: block; }
+  .history-panel {
+    position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
+    background: var(--card); border-left: 1px solid var(--border);
+    z-index: 100; transition: right 0.25s ease;
+    display: flex; flex-direction: column;
+  }
+  .history-panel.open { right: 0; }
+  @media (max-width: 480px) {
+    .history-panel { width: 100%; right: -100%; }
+  }
+  .history-header { padding: 18px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .history-header h2 { font-size: 15px; font-weight: 700; }
+  .history-close { background: none; border: none; color: var(--muted);
+    font-size: 20px; cursor: pointer; line-height: 1; }
+  .history-close:hover { color: var(--text); }
+  .history-list { flex: 1; overflow-y: auto; padding: 12px; }
+  .history-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  .session-card {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .session-card:hover { border-color: rgba(46,204,113,0.3); }
+  .session-top { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+  .session-date { font-size: 10px; color: var(--muted); white-space: nowrap; margin-top: 2px; }
+  .session-label-input {
+    flex: 1; background: transparent; border: none; border-bottom: 1px solid transparent;
+    color: var(--text); font-size: 13px; font-weight: 600; padding: 0;
+    cursor: pointer; outline: none; min-width: 0;
+  }
+  .session-label-input:focus { border-bottom-color: var(--accent); cursor: text; }
+  .param-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .param-pill {
+    font-size: 10px; background: rgba(255,255,255,0.06); border-radius: 10px;
+    padding: 2px 8px; color: var(--muted); white-space: nowrap;
+  }
+  .session-scores { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .score-badge {
+    font-size: 11px; font-weight: 700; padding: 2px 9px;
+    border-radius: 10px; background: rgba(255,255,255,0.06);
+  }
+  .session-actions { display: flex; gap: 6px; }
+  .btn-xs { padding: 5px 12px; font-size: 11px; font-weight: 600;
+    border-radius: 6px; border: none; cursor: pointer; }
+  .btn-view { background: var(--accent); color: #1a1a2e; }
+  .btn-view:hover { background: #27ae60; }
+  .btn-del { background: rgba(231,76,60,0.15); color: var(--danger);
+    border: 1px solid rgba(231,76,60,0.3); }
+  .btn-del:hover { background: rgba(231,76,60,0.3); }
+
+  /* ── Footer ───────────────────────────────────────────────────────────── */
+  .footer {
+    text-align: center; padding: 16px; font-size: 12px; color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Sections hidden until results ────────────────────────────────────── */
+  .results-section { display: none; }
+  .results-section.visible { display: block; }
+
+  .placeholder { text-align: center; padding: 40px; color: var(--muted); }
+  .placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+
+  .upload-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 600px) { .upload-pair { grid-template-columns: 1fr; } }
+
+  /* ── Mobile overrides ─────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .container { padding: 12px; }
+    .header { padding: 14px 16px; }
+    .header h1 { font-size: 18px; }
+    .params-grid { grid-template-columns: 1fr; }
+    .metrics-grid { grid-template-columns: 1fr 1fr; }
+    .report-frame { min-height: 400px; height: 60vh; }
+  }
+
+  .view-tag {
+    display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .view-tag.side { background: rgba(52,152,219,0.2); color: var(--accent2); }
+  .view-tag.front { background: rgba(155,89,182,0.2); color: #9b59b6; }
+
+  .clear-btn {
+    font-size: 11px; color: var(--muted); cursor: pointer; background: none;
+    border: none; text-decoration: underline; margin-top: 4px;
+  }
+  .clear-btn:hover { color: var(--danger); }
+</style>
+</head>
+<body>
+
+<!-- History overlay + sidebar -->
+<div class="history-overlay" id="historyOverlay" onclick="closeHistory()"></div>
+<div class="history-panel" id="historyPanel">
+  <div class="history-header">
+    <h2>Session History</h2>
+    <button class="history-close" onclick="closeHistory()">&#x2715;</button>
+  </div>
+  <div class="history-list" id="historyList">
+    <div class="history-empty">Loading...</div>
+  </div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <h1><span>&#x1F6B4;</span> Bike Fit <span>Analyzer</span></h1>
+  <div class="tag">Web</div>
+  <div style="margin-left:auto;">
+    <button class="btn btn-outline btn-sm" onclick="openHistory()">&#x1F4CB; History</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Upload & Controls + Results panels -->
+  <div class="two-col">
+
+    <!-- LEFT COLUMN: Upload & Controls -->
+    <div>
+      <div class="card">
+        <div class="card-title">Video Input</div>
+
+        <div class="upload-pair">
+          <!-- Side video upload -->
+          <div>
+            <div class="view-tag side">Side View</div>
+            <div class="upload-zone" id="sideDropZone">
+              <div class="icon">&#x1F4F9;</div>
+              <div class="label">Drop <strong>side video</strong></div>
+              <div class="sublabel">Joint angle analysis</div>
+              <input type="file" id="sideFileInput" accept="video/*"/>
+            </div>
+            <video class="video-preview" id="sidePreview" controls muted></video>
+            <div class="file-info" id="sideFileInfo"></div>
+            <button class="clear-btn" id="sideClearBtn" style="display:none;" onclick="clearZone('side')">&#x2715; Remove video</button>
+          </div>
+
+          <!-- Front video upload -->
+          <div>
+            <div class="view-tag front">Front View</div>
+            <div class="upload-zone" id="frontDropZone">
+              <div class="icon">&#x1F4F9;</div>
+              <div class="label">Drop <strong>front video</strong></div>
+              <div class="sublabel">Knee dynamics analysis</div>
+              <input type="file" id="frontFileInput" accept="video/*"/>
+            </div>
+            <video class="video-preview" id="frontPreview" controls muted></video>
+            <div class="file-info" id="frontFileInfo"></div>
+            <button class="clear-btn" id="frontClearBtn" style="display:none;" onclick="clearZone('front')">&#x2715; Remove video</button>
+          </div>
+        </div>
+
+        <div style="font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center;">
+          Upload one or both views. Each is analyzed independently.
+        </div>
+
+        <!-- Bike Parameters (collapsible) -->
+        <details style="margin-top: 16px;">
+          <summary class="params-summary">&#x2699; Bike Parameters <span style="font-size:10px; opacity:0.6;">(optional — saved with results)</span></summary>
+          <div class="params-grid">
+            <div class="param-field">
+              <label>Rider Name</label>
+              <input type="text" id="pUserName" placeholder="e.g. Alex"/>
+            </div>
+            <div class="param-field">
+              <label>Bike Name</label>
+              <input type="text" id="pBikeName" placeholder="e.g. Canyon Aeroad"/>
+            </div>
+            <div class="param-field full">
+              <label>Session Label</label>
+              <input type="text" id="pLabel" placeholder="e.g. Race bike after saddle raise"/>
+            </div>
+            <div class="param-field">
+              <label>Saddle Height</label>
+              <div class="param-input-row">
+                <input type="number" id="pSaddleHeight" placeholder="720" step="1"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pSaddleHeight')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm from BB centre</div>
+            </div>
+            <div class="param-field">
+              <label>Saddle Setback</label>
+              <div class="param-input-row">
+                <input type="number" id="pSaddleSetback" placeholder="65" step="1"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pSaddleSetback')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm</div>
+            </div>
+            <div class="param-field">
+              <label>Saddle Tilt</label>
+              <div class="param-input-row">
+                <input type="number" id="pSaddleTilt" placeholder="0" step="0.5"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pSaddleTilt')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">degrees (+ nose up)</div>
+            </div>
+            <div class="param-field">
+              <label>Stem Length</label>
+              <div class="param-input-row">
+                <input type="number" id="pStemLength" placeholder="100" step="5"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pStemLength')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm</div>
+            </div>
+            <div class="param-field">
+              <label>Stem Angle</label>
+              <div class="param-input-row">
+                <input type="number" id="pStemAngle" placeholder="-6" step="1"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pStemAngle')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">degrees</div>
+            </div>
+            <div class="param-field">
+              <label>Handlebar Drop</label>
+              <div class="param-input-row">
+                <input type="number" id="pHbarDrop" placeholder="30" step="5"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pHbarDrop')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm below saddle</div>
+            </div>
+            <div class="param-field">
+              <label>Handlebar Width</label>
+              <div class="param-input-row">
+                <input type="number" id="pHbarWidth" placeholder="420" step="10"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pHbarWidth')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm</div>
+            </div>
+            <div class="param-field">
+              <label>Crank Length</label>
+              <div class="param-input-row">
+                <input type="number" id="pCrankLength" placeholder="172.5" step="2.5"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pCrankLength')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm</div>
+            </div>
+            <div class="param-field">
+              <label>Spacers</label>
+              <div class="param-input-row">
+                <input type="number" id="pSpacers" placeholder="10" step="5"/>
+                <button type="button" class="unknown-btn" onclick="toggleUnknown(this,'pSpacers')" title="Mark as unknown">?</button>
+              </div>
+              <div class="param-unit">mm</div>
+            </div>
+            <div class="param-field full">
+              <label>Notes</label>
+              <textarea id="pNotes" placeholder="e.g. First ride after raising saddle 5mm, cleats moved back"></textarea>
+            </div>
+          </div>
+        </details>
+
+        <div style="margin-top: 16px;">
+          <button class="btn btn-primary" id="analyzeBtn" disabled>
+            &#x25B6;&nbsp; Run Analysis
+          </button>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+          <div class="progress-text" id="progressText">Starting...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: Key Metrics -->
+    <div>
+      <div class="card" id="metricsCard">
+        <div class="card-title">Key Metrics</div>
+
+        <div class="placeholder" id="metricsPlaceholder">
+          <div class="icon">&#x1F4CA;</div>
+          <div>Upload and analyze a video to see results</div>
+        </div>
+
+        <!-- Side-view metrics -->
+        <div class="results-section" id="sideMetricsSection">
+          <div style="font-size: 11px; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600;">Side View</div>
+          <div class="metrics-grid" id="sideMetricsGrid">
+            <div class="metric-card" id="mScore" style="border-top-color: var(--accent);">
+              <div class="value">-<span class="unit">/100</span></div>
+              <div class="label">Motion Score</div>
+            </div>
+            <div class="metric-card" id="mCadence" style="border-top-color: #9b59b6;">
+              <div class="value">-<span class="unit"> RPM</span></div>
+              <div class="label">Cadence</div>
+            </div>
+            <div class="metric-card" id="mTrunk" style="border-top-color: var(--warn);">
+              <div class="value">-<span class="unit">/100</span></div>
+              <div class="label">Trunk Stability</div>
+            </div>
+            <div class="metric-card" id="mLeftElbow" style="border-top-color: #e67e22;">
+              <div class="value">-<span class="unit">°</span></div>
+              <div class="label">L-Elbow Angle</div>
+            </div>
+            <div class="metric-card" id="mLeftAnkle" style="border-top-color: #2ecc71;">
+              <div class="value">-<span class="unit">°</span></div>
+              <div class="label">L-Ankle ROM</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Front-view metrics -->
+        <div class="results-section" id="frontMetricsSection" style="margin-top: 16px;">
+          <div style="font-size: 11px; color: #9b59b6; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600;">Front View</div>
+          <div class="metrics-grid" id="frontMetricsGrid">
+            <div class="metric-card" id="mFrontalScore" style="border-top-color: #9b59b6;">
+              <div class="value">-<span class="unit">/100</span></div>
+              <div class="label">Frontal Score</div>
+            </div>
+            <div class="metric-card" id="mFrontalSym" style="border-top-color: var(--accent2);">
+              <div class="value">-<span class="unit">%</span></div>
+              <div class="label">Frontal Symmetry</div>
+            </div>
+            <div class="metric-card" id="mLeftKnee" style="border-top-color: var(--accent);">
+              <div class="value">-<span class="unit">%</span></div>
+              <div class="label">L-Knee Dev</div>
+            </div>
+            <div class="metric-card" id="mRightKnee" style="border-top-color: var(--warn);">
+              <div class="value">-<span class="unit">%</span></div>
+              <div class="label">R-Knee Dev</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recommendations -->
+  <div class="card results-section" id="recsCard" style="margin-top: 24px;">
+    <div class="card-title">Fitting Recommendations</div>
+    <div class="rec-list" id="recsList"></div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card results-section" id="chartCard" style="margin-top: 24px;">
+    <div class="card-title">Joint Angle Chart</div>
+    <img class="chart-img" id="chartImg" alt="Joint angle chart"/>
+  </div>
+
+  <!-- BDC / TDC Keyframes -->
+  <div class="card results-section" id="keyframesCard" style="margin-top: 24px;">
+    <div class="card-title">Pedal Stroke Keyframes</div>
+    <div class="keyframe-row">
+      <div class="keyframe-wrap" id="bdcWrap">
+        <div class="keyframe-label bdc">&#x25BC; BDC &mdash; Max Extension</div>
+        <img class="keyframe-img" id="bdcImg" alt="BDC frame"/>
+      </div>
+      <div class="keyframe-wrap" id="tdcWrap">
+        <div class="keyframe-label tdc">&#x25B2; TDC &mdash; Max Flexion</div>
+        <img class="keyframe-img" id="tdcImg" alt="TDC frame"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Annotated Videos -->
+  <div class="card results-section" id="videosCard" style="margin-top: 24px;">
+    <div class="card-title">Annotated Videos</div>
+    <div class="video-row" id="videoRow">
+      <div id="sideVideoWrap" style="display:none;">
+        <div class="video-label">&#x1F535; Side View</div>
+        <video class="annotated-video" id="sideAnnotatedVideo" controls></video>
+        <a class="dl-link" id="sideVideoDownload" href="#" download>&#x2B07; Download</a>
+      </div>
+      <div id="frontVideoWrap" style="display:none;">
+        <div class="video-label">&#x1F7E3; Front View</div>
+        <video class="annotated-video" id="frontAnnotatedVideo" controls></video>
+        <a class="dl-link" id="frontVideoDownload" href="#" download>&#x2B07; Download</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Report -->
+  <div class="card results-section" id="reportCard" style="margin-top: 24px;">
+    <div class="card-title" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <span>Full Report</span>
+      <div class="report-actions">
+        <a id="reportOpenLink" href="#" target="_blank">&#x2197; Open in new tab</a>
+        <button class="btn btn-outline btn-sm" onclick="downloadReportPDF()" id="pdfBtn" disabled>&#x1F4E5; Download PDF</button>
+      </div>
+    </div>
+    <iframe class="report-frame" id="reportFrame" src="about:blank"></iframe>
+  </div>
+
+</div>
+
+<div class="footer">Bike Fit Analyzer &middot; Powered by MediaPipe &amp; OpenCV</div>
+
+<script>
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const analyzeBtn = document.getElementById('analyzeBtn');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+
+let sideFile = null;
+let frontFile = null;
+let pollingId = null;
+
+// ── Upload zone setup ────────────────────────────────────────────────────
+function handleZoneFile(file, zone, preview, info, clearBtnId, onFile) {
+  if (!file.type.startsWith('video/')) {
+    alert('Please select a video file.');
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  preview.src = url;
+  preview.style.display = 'block';
+  zone.classList.add('has-file');
+  const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+  info.textContent = `${file.name}  (${sizeMB} MB)`;
+  document.getElementById(clearBtnId).style.display = 'inline-block';
+  onFile(file);
+  updateAnalyzeBtn();
+}
+
+function setupUploadZone(zoneId, inputId, previewId, infoId, clearBtnId, onFile) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  const info = document.getElementById(infoId);
+
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleZoneFile(e.dataTransfer.files[0], zone, preview, info, clearBtnId, onFile);
+  });
+  input.addEventListener('change', () => {
+    if (input.files.length) handleZoneFile(input.files[0], zone, preview, info, clearBtnId, onFile);
+  });
+}
+
+function clearZone(side) {
+  const zoneId    = side + 'DropZone';
+  const inputId   = side + 'FileInput';
+  const previewId = side + 'Preview';
+  const infoId    = side + 'FileInfo';
+  const clearBtnId = side + 'ClearBtn';
+
+  const zone    = document.getElementById(zoneId);
+  const input   = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  const info    = document.getElementById(infoId);
+  const clearBtn = document.getElementById(clearBtnId);
+
+  // Revoke old object URL to free memory
+  if (preview.src) URL.revokeObjectURL(preview.src);
+  preview.src = '';
+  preview.style.display = 'none';
+  zone.classList.remove('has-file');
+  info.textContent = '';
+  clearBtn.style.display = 'none';
+  input.value = '';
+
+  if (side === 'side') sideFile = null;
+  else frontFile = null;
+
+  updateAnalyzeBtn();
+}
+
+setupUploadZone('sideDropZone',  'sideFileInput',  'sidePreview',  'sideFileInfo',  'sideClearBtn',  f => { sideFile  = f; });
+setupUploadZone('frontDropZone', 'frontFileInput', 'frontPreview', 'frontFileInfo', 'frontClearBtn', f => { frontFile = f; });
+
+function updateAnalyzeBtn() {
+  analyzeBtn.disabled = !(sideFile || frontFile);
+}
+
+// ── Unknown toggle ────────────────────────────────────────────────────────
+function toggleUnknown(btn, inputId) {
+  const input = document.getElementById(inputId);
+  const isActive = btn.classList.toggle('active');
+  input.disabled = isActive;
+  if (isActive) {
+    input._savedValue = input.value;
+    input.value = '';
+    input.placeholder = 'Unknown';
+  } else {
+    input.value = input._savedValue || '';
+    // restore original placeholder from data-placeholder or leave as-is
+    const orig = input.dataset.origPlaceholder;
+    if (orig) input.placeholder = orig;
+  }
+}
+
+// Stash original placeholders so toggleUnknown can restore them
+document.querySelectorAll('.param-input-row input').forEach(el => {
+  el.dataset.origPlaceholder = el.placeholder;
+});
+
+// ── Bike params collection ────────────────────────────────────────────────
+function collectBikeParams() {
+  // For numeric fields: return null if blank or if unknown btn is active
+  const num = id => {
+    const row = document.getElementById(id).closest('.param-input-row');
+    if (row && row.querySelector('.unknown-btn.active')) return null;
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? null : v;
+  };
+  const str = id => document.getElementById(id).value.trim() || '';
+  return {
+    label:              str('pLabel'),
+    user_name:          str('pUserName'),
+    bike_name:          str('pBikeName'),
+    saddle_height_mm:   num('pSaddleHeight'),
+    saddle_setback_mm:  num('pSaddleSetback'),
+    saddle_tilt_deg:    num('pSaddleTilt'),
+    stem_length_mm:     num('pStemLength'),
+    stem_angle_deg:     num('pStemAngle'),
+    handlebar_drop_mm:  num('pHbarDrop'),
+    handlebar_width_mm: num('pHbarWidth'),
+    crank_length_mm:    num('pCrankLength'),
+    spacers_mm:         num('pSpacers'),
+    notes:              str('pNotes'),
+  };
+}
+
+// ── Analysis ──────────────────────────────────────────────────────────────
+analyzeBtn.addEventListener('click', async () => {
+  if (!sideFile && !frontFile) return;
+  analyzeBtn.disabled = true;
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  progressText.textContent = 'Uploading...';
+
+  const form = new FormData();
+  if (sideFile) form.append('side_video', sideFile);
+  if (frontFile) form.append('front_video', frontFile);
+  form.append('bike_params', JSON.stringify(collectBikeParams()));
+
+  try {
+    const res = await fetch('/api/analyze', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    startPolling();
+  } catch (err) {
+    progressText.textContent = 'Error: ' + err.message;
+    analyzeBtn.disabled = false;
+  }
+});
+
+function startPolling() {
+  pollingId = setInterval(async () => {
+    try {
+      const res = await fetch('/api/status');
+      const state = await res.json();
+
+      progressBar.style.width = state.progress + '%';
+      progressText.textContent = state.stage || `${state.progress}%`;
+
+      if (!state.running && state.results) {
+        clearInterval(pollingId);
+        showResults(state.results);
+        analyzeBtn.disabled = false;
+      } else if (!state.running && state.error) {
+        clearInterval(pollingId);
+        progressText.textContent = 'Error: ' + state.error;
+        analyzeBtn.disabled = false;
+      }
+    } catch (e) { /* retry next tick */ }
+  }, 800);
+}
+
+// ── Display results ───────────────────────────────────────────────────────
+function showResults(results) {
+  const m = results.motion_metrics || {};
+  const fa = results.frontal_analysis || {};
+
+  // Side-view metrics
+  if (results.has_side_view && m) {
+    setMetric('mScore',    m.overall_motion_score,  '/100', scoreColor(m.overall_motion_score));
+    setMetric('mCadence',  m.estimated_cadence_rpm, ' RPM');
+    setMetric('mTrunk',    m.trunk_stability_score,  '/100');
+
+    // Elbow angle (mean, near side only)
+    setMetric('mLeftElbow', m.left_elbow_mean, '°', elbowColor(m.left_elbow_mean));
+
+    // Ankle ROM (range of motion through pedal stroke, near side only)
+    const lAnkleRom = results.angle_summary && results.angle_summary.left_ankle
+                      ? results.angle_summary.left_ankle.range : null;
+    setMetric('mLeftAnkle', lAnkleRom, '°');
+
+    document.getElementById('sideMetricsSection').classList.add('visible');
+  }
+
+  // Front-view metrics
+  if (results.has_front_view && fa) {
+    setMetric('mFrontalScore', fa.frontal_score, '/100', scoreColor(fa.frontal_score));
+    setMetric('mFrontalSym', fa.frontal_symmetry, '%');
+    const leftDev = fa.left ? fa.left.deviation_pct_mean : null;
+    const rightDev = fa.right ? fa.right.deviation_pct_mean : null;
+    setMetric('mLeftKnee', leftDev, '%', devColor(leftDev));
+    setMetric('mRightKnee', rightDev, '%', devColor(rightDev));
+    document.getElementById('frontMetricsSection').classList.add('visible');
+  }
+
+  // Recommendations (combine side + frontal)
+  const recsList = document.getElementById('recsList');
+  recsList.innerHTML = '';
+  const icons = { warning: '&#x26A0;&#xFE0F;', info: '&#x2139;&#xFE0F;', success: '&#x2705;' };
+
+  const allRecs = [
+    ...(m.recommendations || []),
+    ...(fa.frontal_recommendations || []),
+  ];
+  allRecs.forEach(rec => {
+    const el = document.createElement('div');
+    el.className = 'rec-item ' + (rec.type || 'info');
+    el.innerHTML = `
+      <div class="rec-head">${icons[rec.type] || ''} ${rec.joint} &mdash; ${rec.metric}</div>
+      <div class="rec-body">${rec.suggestion}</div>`;
+    recsList.appendChild(el);
+  });
+
+  // Chart + BDC/TDC keyframes
+  if (results.chart_png) {
+    document.getElementById('chartImg').src = results.chart_png;
+    document.getElementById('chartCard').classList.add('visible');
+  }
+  if (results.bdc_frame_png || results.tdc_frame_png) {
+    if (results.bdc_frame_png) document.getElementById('bdcImg').src = results.bdc_frame_png;
+    else document.getElementById('bdcWrap').style.display = 'none';
+    if (results.tdc_frame_png) document.getElementById('tdcImg').src = results.tdc_frame_png;
+    else document.getElementById('tdcWrap').style.display = 'none';
+    document.getElementById('keyframesCard').classList.add('visible');
+  }
+
+  // Annotated videos — show inline
+  const videoRow = document.getElementById('videoRow');
+  let videoCount = 0;
+  if (results.side_annotated_video) {
+    const vid = document.getElementById('sideAnnotatedVideo');
+    vid.src = results.side_annotated_video;
+    document.getElementById('sideVideoDownload').href = results.side_annotated_video;
+    document.getElementById('sideVideoWrap').style.display = 'block';
+    videoCount++;
+  }
+  if (results.front_annotated_video) {
+    const vid = document.getElementById('frontAnnotatedVideo');
+    vid.src = results.front_annotated_video;
+    document.getElementById('frontVideoDownload').href = results.front_annotated_video;
+    document.getElementById('frontVideoWrap').style.display = 'block';
+    videoCount++;
+  }
+  if (videoCount > 0) {
+    videoRow.className = videoCount === 1 ? 'video-row single' : 'video-row';
+    document.getElementById('videosCard').classList.add('visible');
+  }
+
+  // Full report — embedded iframe
+  if (results.report_html) {
+    document.getElementById('reportFrame').src = results.report_html;
+    document.getElementById('reportOpenLink').href = results.report_html;
+    document.getElementById('reportCard').classList.add('visible');
+    document.getElementById('pdfBtn').disabled = false;
+  }
+
+  // Show results sections
+  document.getElementById('metricsPlaceholder').style.display = 'none';
+  if (allRecs.length > 0) document.getElementById('recsCard').classList.add('visible');
+}
+
+function downloadReportPDF() {
+  const frame = document.getElementById('reportFrame');
+  if (frame && frame.contentWindow) {
+    frame.contentWindow.print();
+  }
+}
+
+function setMetric(id, value, unit, color) {
+  const card = document.getElementById(id);
+  if (!card) return;
+  const valEl = card.querySelector('.value');
+  const formatted = value != null ? (typeof value === 'number' ? value.toFixed(0) : value) : '-';
+  valEl.innerHTML = `${formatted}<span class="unit">${unit}</span>`;
+  if (color) card.style.borderTopColor = color;
+}
+
+function scoreColor(v) {
+  if (v == null) return 'var(--accent)';
+  if (v >= 75) return 'var(--accent)';
+  if (v >= 50) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+function devColor(v) {
+  if (v == null) return 'var(--accent)';
+  if (Math.abs(v) < 8) return 'var(--accent)';
+  if (Math.abs(v) < 15) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+function elbowColor(v) {
+  if (v == null) return '#e67e22';
+  if (v >= 150 && v <= 165) return 'var(--accent)';
+  if (v >= 135 && v <= 175) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+// ── History panel ─────────────────────────────────────────────────────────
+async function openHistory() {
+  document.getElementById('historyPanel').classList.add('open');
+  document.getElementById('historyOverlay').classList.add('open');
+  await loadHistory();
+}
+
+function closeHistory() {
+  document.getElementById('historyPanel').classList.remove('open');
+  document.getElementById('historyOverlay').classList.remove('open');
+}
+
+async function loadHistory() {
+  const list = document.getElementById('historyList');
+  list.innerHTML = '<div class="history-empty">Loading...</div>';
+  try {
+    const res  = await fetch('/api/sessions?limit=50');
+    const data = await res.json();
+    if (!data.sessions || data.sessions.length === 0) {
+      list.innerHTML = '<div class="history-empty">No sessions recorded yet.<br>Run an analysis to create your first session.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    data.sessions.forEach(s => list.appendChild(buildSessionCard(s)));
+  } catch (e) {
+    list.innerHTML = '<div class="history-empty">Failed to load history.</div>';
+  }
+}
+
+function buildSessionCard(s) {
+  const card = document.createElement('div');
+  card.className = 'session-card';
+  card.dataset.id = s.id;
+
+  const date = new Date(s.created_at).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+
+  // Bike param pills
+  const paramDefs = [
+    ['Saddle', s.saddle_height_mm, 'mm'],
+    ['Setback', s.saddle_setback_mm, 'mm'],
+    ['Stem', s.stem_length_mm, 'mm'],
+    ['Crank', s.crank_length_mm, 'mm'],
+    ['Drop', s.handlebar_drop_mm, 'mm'],
+    ['Spacers', s.spacers_mm, 'mm'],
+  ];
+  const pills = paramDefs
+    .filter(([, v]) => v != null)
+    .map(([k, v, u]) => `<span class="param-pill">${k} ${v}${u}</span>`)
+    .join('');
+
+  // Score badges
+  const scoreDefs = [
+    ['Motion', s.motion_score, '#2ecc71'],
+    ['Cadence', s.cadence_rpm, '#9b59b6', ' rpm'],
+    ['Frontal', s.frontal_score, '#3498db'],
+  ];
+  const badges = scoreDefs
+    .filter(([, v]) => v != null)
+    .map(([k, v, c, sfx='']) =>
+      `<span class="score-badge" style="color:${c}">${k} ${Math.round(v)}${sfx}</span>`)
+    .join('');
+
+  const views = [s.has_side_view && '&#x1F535; Side', s.has_front_view && '&#x1F7E3; Front']
+    .filter(Boolean).join('  ');
+
+  const who = [s.user_name, s.bike_name].filter(Boolean).join(' / ');
+
+  card.innerHTML = `
+    <div class="session-top">
+      <input class="session-label-input" value="${escHtml(s.label || 'Untitled session')}"
+             title="Click to rename" data-id="${s.id}"/>
+      <span class="session-date">${date}</span>
+    </div>
+    ${who ? `<div style="font-size:11px;color:var(--accent2);margin-bottom:6px;font-weight:600">${escHtml(who)}</div>` : ''}
+    ${pills ? `<div class="param-pills">${pills}</div>` : ''}
+    ${badges ? `<div class="session-scores">${badges}</div>` : ''}
+    ${s.notes ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-style:italic">${escHtml(s.notes)}</div>` : ''}
+    <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${views}</div>
+    <div class="session-actions">
+      <button class="btn-xs btn-view" onclick="viewSession(${s.id})">View Results</button>
+      <button class="btn-xs btn-del"  onclick="deleteSession(${s.id}, this)">Delete</button>
+    </div>`;
+
+  // Inline label rename on blur
+  const labelInput = card.querySelector('.session-label-input');
+  labelInput.addEventListener('blur', async () => {
+    const newLabel = labelInput.value.trim() || 'Untitled session';
+    await fetch(`/api/sessions/${s.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: newLabel }),
+    });
+  });
+  labelInput.addEventListener('keydown', e => { if (e.key === 'Enter') labelInput.blur(); });
+
+  return card;
+}
+
+async function viewSession(id) {
+  try {
+    const res  = await fetch(`/api/sessions/${id}`);
+    const data = await res.json();
+    if (data.error) { alert('Session not found.'); return; }
+
+    // Populate bike params form with stored values
+    const bp = data.bike_params || {};
+    const setVal = (elId, key) => {
+      const el = document.getElementById(elId);
+      if (el && bp[key] != null) el.value = bp[key];
+    };
+    document.getElementById('pLabel').value    = bp.label    || '';
+    document.getElementById('pUserName').value = data.user_name || bp.user_name || '';
+    document.getElementById('pBikeName').value = data.bike_name || bp.bike_name || '';
+    setVal('pSaddleHeight', 'saddle_height_mm');
+    setVal('pSaddleSetback','saddle_setback_mm');
+    setVal('pSaddleTilt',   'saddle_tilt_deg');
+    setVal('pStemLength',   'stem_length_mm');
+    setVal('pStemAngle',    'stem_angle_deg');
+    setVal('pHbarDrop',     'handlebar_drop_mm');
+    setVal('pHbarWidth',    'handlebar_width_mm');
+    setVal('pCrankLength',  'crank_length_mm');
+    setVal('pSpacers',      'spacers_mm');
+    document.getElementById('pNotes').value    = bp.notes    || '';
+    // Reset all unknown toggles when loading a session
+    document.querySelectorAll('.unknown-btn.active').forEach(btn => {
+      const row = btn.closest('.param-input-row');
+      if (row) { const inp = row.querySelector('input'); if (inp) toggleUnknown(btn, inp.id); }
+    });
+
+    // Open the bike params details so the user can see what was loaded
+    document.querySelector('details').open = true;
+
+    // Replay results in the main view
+    showResults(data.results);
+    closeHistory();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    alert('Failed to load session.');
+  }
+}
+
+async function deleteSession(id, btn) {
+  if (!confirm('Delete this session record? (Output files are kept on disk.)')) return;
+  const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) {
+    btn.closest('.session-card').remove();
+    const list = document.getElementById('historyList');
+    if (!list.querySelector('.session-card')) {
+      list.innerHTML = '<div class="history-empty">No sessions recorded yet.</div>';
+    }
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
